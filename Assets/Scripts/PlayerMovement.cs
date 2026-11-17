@@ -1,7 +1,8 @@
 using System.Collections;
 using UnityEngine;
-using UnityEngine.InputSystem;
 
+// RECEIVER of the Command pattern: knows how to move and jump,
+// but no longer reads input itself.
 public class PlayerMovement : MonoBehaviour
 {
     public float moveSpeed = 5f;
@@ -16,18 +17,17 @@ public class PlayerMovement : MonoBehaviour
     private Rigidbody rb;
     private Vector2 moveInput;
     private bool isGrounded;
-    private PlayerInput playerInput;
+
     void Start()
     {
         rb = GetComponent<Rigidbody>();
-        playerInput = new PlayerInput();
 
         StartCoroutine(PlayFootStep());
     }
 
     void Update()
     {
-       checkGround(); 
+        checkGround();
     }
 
     private void FixedUpdate()
@@ -35,7 +35,8 @@ public class PlayerMovement : MonoBehaviour
         MovePlayer();
     }
 
-    void OnJump()
+    // Called by JumpCommand
+    public void Jump()
     {
         if (isGrounded)
         {
@@ -43,14 +44,15 @@ public class PlayerMovement : MonoBehaviour
         }
     }
 
+    // Called by MoveCommand
+    public void SetMoveInput(Vector2 input)
+    {
+        moveInput = input;
+    }
+
     void checkGround()
     {
         isGrounded = Physics.CheckSphere(groundCheck.position, groundDistance, groundMask);
-    }
-
-    void OnMovement(InputValue value)
-    {
-        moveInput = value.Get<Vector2>();
     }
 
     void MovePlayer()
@@ -60,11 +62,11 @@ public class PlayerMovement : MonoBehaviour
         rb.linearVelocity = new Vector3(direction.x * moveSpeed, rb.linearVelocity.y, direction.z * moveSpeed);
     }
 
-    IEnumerator PlayFootStep() 
+    IEnumerator PlayFootStep()
     {
         while (true)
         {
-            if(rb.linearVelocity.magnitude > 0.1f && isGrounded)
+            if (rb.linearVelocity.magnitude > 0.1f && isGrounded)
             {
                 AudioManager.instance.PlaySFX(footStepSFX);
             }

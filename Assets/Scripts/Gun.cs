@@ -1,6 +1,9 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 using System.Collections;
 
+// CLIENT of the Decorator pattern: reads fire rate, magazine size and
+// sound volume from an IWeaponStats object that may be wrapped by decorators.
 public class Gun : MonoBehaviour
 {
     public float reloadTime = 1f;
@@ -18,6 +21,16 @@ public class Gun : MonoBehaviour
     public float recoilDistance = 0.1f;
     public float recoilSpeed = 15f;
 
+    // ---- Decorator pattern: attachments (toggle in play mode with keys 1, 2, 3) ----
+    [Header("Attachments (keys: 1 = Silencer, 2 = Rapid Fire, 3 = Extended Mag)")]
+    public bool silencer;
+    public bool rapidFire;
+    public bool extendedMag;
+    public string activeStats;   // Inspector display only
+
+    private const float BaseVolume = 0.25f;
+    private IWeaponStats stats;
+
     private int currentAmmo;
     private bool isReloading = false;
     private float nextTimeToFire = 0f;
@@ -25,12 +38,55 @@ public class Gun : MonoBehaviour
     private Quaternion initialRotation;
     private Vector3 initialPosition;
     private Vector3 reloadRoationOffset = new Vector3(66, 50, 50);
+
+    void Awake()
+    {
+        RebuildStats();
+    }
+
     void Start()
     {
-        currentAmmo = magSize;
+        currentAmmo = stats.MagSize;
         initialRotation = transform.localRotation;
         initialPosition = transform.localPosition;
         UIManager.Instance.ammoText.text = currentAmmo.ToString();
+    }
+
+    void Update()
+    {
+        Keyboard kb = Keyboard.current;
+        if (kb == null) return;
+
+        if (kb.digit1Key.wasPressedThisFrame) { silencer = !silencer; OnAttachmentsChanged(); }
+        if (kb.digit2Key.wasPressedThisFrame) { rapidFire = !rapidFire; OnAttachmentsChanged(); }
+        if (kb.digit3Key.wasPressedThisFrame) { extendedMag = !extendedMag; OnAttachmentsChanged(); }
+    }
+
+    // Wrap the base stats with one decorator per active attachment
+    void RebuildStats()
+    {
+        IWeaponStats s = new BaseWeaponStats(fireRate, magSize, BaseVolume);
+
+        if (silencer) s = new SilencerDecorator(s);
+        if (rapidFire) s = new RapidFireDecorator(s);
+        if (extendedMag) s = new ExtendedMagDecorator(s);
+
+        stats = s;
+        activeStats = stats.Description;
+    }
+
+    void OnAttachmentsChanged()
+    {
+        RebuildStats();
+
+        if (currentAmmo > stats.MagSize)
+            currentAmmo = stats.MagSize;
+
+        UIManager.Instance.ammoText.text = currentAmmo.ToString();
+        Debug.Log("Gun stats: " + stats.Description +
+                  " | FireRate " + stats.FireRate +
+                  " | Mag " + stats.MagSize +
+                  " | Volume " + stats.SfxVolume);
     }
 
     public void Shoot()
@@ -44,13 +100,13 @@ public class Gun : MonoBehaviour
             return;
         }
 
-        nextTimeToFire = Time.time + fireRate;
+        nextTimeToFire = Time.time + stats.FireRate;   // decorated value
         currentAmmo--;
         UIManager.Instance.ammoText.text = currentAmmo.ToString();
 
-        AudioManager.instance.PlaySFX(shootingSFX, 0.25f);
+        AudioManager.instance.PlaySFX(shootingSFX, stats.SfxVolume);   // decorated value
 
-        Quaternion adjustRotation = bulletSpawnPoint.rotation * Quaternion.Euler(-6f, -3f, 0f);
+        Quaternion adjustRotation = bulletSpawnPoint.rotation * Quaternion.Euler(-1f, -3f, 0f);
 
         Instantiate(bullet, bulletSpawnPoint.position, bulletSpawnPoint.rotation);
         Instantiate(weaponFlash, bulletSpawnPoint.position, bulletSpawnPoint.rotation);
@@ -58,8 +114,6 @@ public class Gun : MonoBehaviour
         StopCoroutine(nameof(Recoil));
         StartCoroutine(nameof(Recoil));
     }
-
-
 
     IEnumerator Reload()
     {
@@ -85,7 +139,7 @@ public class Gun : MonoBehaviour
             yield return null;
         }
 
-        currentAmmo = magSize;
+        currentAmmo = stats.MagSize;   // decorated value
         UIManager.Instance.ammoText.text = currentAmmo.ToString();
         isReloading = false;
     }
@@ -93,7 +147,7 @@ public class Gun : MonoBehaviour
     public void TryReload()
     {
         if (isReloading) return;
-        if (currentAmmo >= magSize) return;
+        if (currentAmmo >= stats.MagSize) return;
 
         StartCoroutine(Reload());
     }

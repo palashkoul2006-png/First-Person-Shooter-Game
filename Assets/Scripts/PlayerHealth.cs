@@ -1,10 +1,15 @@
+using System;
 using UnityEngine;
 
+// SUBJECT of the Observer pattern.
+// It raises events when something happens, and does not know who is listening.
 public class PlayerHealth : MonoBehaviour
 {
     public int health = 100;
 
-    public AudioClip hitSFX;
+    // Events observers can subscribe to
+    public event Action<int> OnDamaged;   // pushes the new health value
+    public event Action OnDied;
 
     private void OnCollisionEnter(Collision collision)
     {
@@ -17,11 +22,8 @@ public class PlayerHealth : MonoBehaviour
     private void DecreaseHealth(int decreaseAmount)
     {
         health -= decreaseAmount;
-        PlayerLook.Instance.AddShake(0.1f, 0.25f);
-        UIManager.Instance.InstantiateHitUI();
-        AudioManager.instance.PlaySFX(hitSFX);
-        UIManager.Instance.SetHealthValue(health);
 
+        OnDamaged?.Invoke(health);   // notify all observers
 
         if (health <= 0)
         {
@@ -29,11 +31,12 @@ public class PlayerHealth : MonoBehaviour
         }
     }
 
-    private void Die() 
+    private void Die()
     {
         Time.timeScale = 0f;
-        UIManager.Instance.EnableDeathUI();
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
+
+        OnDied?.Invoke();            // notify all observers
     }
 }

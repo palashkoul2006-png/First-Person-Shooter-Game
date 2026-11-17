@@ -1,9 +1,9 @@
-using UnityEngine;
 using System.Collections;
-using UnityEngine.AI;
 using System.Linq;
+using UnityEngine;
+using UnityEngine.AI;
 
-public class Enemy : MonoBehaviour
+public class Enemy : MonoBehaviour   // CONTEXT of the State pattern
 {
     public int health = 100;
 
@@ -15,14 +15,13 @@ public class Enemy : MonoBehaviour
     private float lastShotTime = 0f;
 
     public Material hitMat;
-
     public AudioClip shootingSFX;
 
     private Rigidbody rb;
     private Renderer rend;
     private Material originalMaterial;
 
-    // AI Settings
+    // AI settings
     public int currentPointIndex = 0;
     public Vector3 currentTarget;
     public float positionThreshhold;
@@ -32,15 +31,29 @@ public class Enemy : MonoBehaviour
     public float minChasingHealth = 30f;
 
     public Transform[] patrolPoints;
-    private float idleTimeCounter;
-    private Transform playerTransform;
-    private bool canSeePlayer;
-    private Vector3 lastKnownPlayerPosition;
 
-    private NavMeshAgent agent;
+    // made public so the state classes can use them
+    [HideInInspector] public float idleTimeCounter;
+    [HideInInspector] public Transform playerTransform;
+    [HideInInspector] public bool canSeePlayer;
+    [HideInInspector] public Vector3 lastKnownPlayerPosition;
+    [HideInInspector] public NavMeshAgent agent;
 
-    public enum State { Idle, Patrolling, Chasing, Attacking }
-    public State state = State.Idle;
+    // ---- State pattern ----
+    public IEnemyState currentState;
+    public string currentStateName;   // Inspector display only (interfaces can't be shown)
+
+    public readonly IdleState idleState = new IdleState();
+    public readonly PatrollingState patrollingState = new PatrollingState();
+    public readonly ChasingState chasingState = new ChasingState();
+    public readonly AttackingState attackingState = new AttackingState();
+
+    public void ChangeState(IEnemyState newState)
+    {
+        currentState = newState;
+        currentStateName = newState.GetType().Name;   // e.g. "ChasingState"
+        currentState.Enter(this);
+    }
 
     void Start()
     {
@@ -52,7 +65,10 @@ public class Enemy : MonoBehaviour
         playerTransform = GameObject.FindWithTag("Player").GetComponent<Transform>();
 
         GameObject patrolPointParent = GameObject.FindWithTag("PatrolPoint");
-        patrolPoints = patrolPointParent.GetComponentsInChildren<Transform>().Where(t => t != patrolPointParent.transform).ToArray();
+        patrolPoints = patrolPointParent.GetComponentsInChildren<Transform>()
+                       .Where(t => t != patrolPointParent.transform).ToArray();
+
+        ChangeState(idleState);   // starting state
     }
 
     private void OnCollisionEnter(Collision collision)
@@ -62,13 +78,9 @@ public class Enemy : MonoBehaviour
             health -= 10;
 
             if (health <= 0)
-            {
                 Die();
-            }
             else
-            {
                 StartCoroutine(Blink());
-            }
         }
     }
 
@@ -76,6 +88,7 @@ public class Enemy : MonoBehaviour
     {
         Destroy(gameObject);
     }
+
     IEnumerator Blink()
     {
         rend.material = hitMat;
@@ -87,21 +100,7 @@ public class Enemy : MonoBehaviour
     {
         LookForPlayer();
 
-        switch (state) 
-        {
-            case State.Idle:
-                Idle();
-                break;
-            case State.Patrolling:
-                Patrolling();
-                break;
-            case State.Attacking:
-                Attacking();
-                break;
-            case State.Chasing:
-                Chasing();
-                break;
-        }
+        currentState.Tick(this);   // delegation: the heart of the pattern
 
         rb.linearVelocity = Vector3.zero;
 
@@ -109,101 +108,25 @@ public class Enemy : MonoBehaviour
         SetLastKnownPlayerPosition();
     }
 
-    private void LookForPlayer() 
+    private void LookForPlayer()
     {
         Vector3 directionToPlayer = playerTransform.position - transform.position;
 
-        if(Physics.Raycast(transform.position, directionToPlayer, out RaycastHit hit, maxVisionDistance))
+        if (Physics.Raycast(transform.position, directionToPlayer, out RaycastHit hit, maxVisionDistance))
         {
             canSeePlayer = hit.transform == playerTransform;
 
-            if(canSeePlayer && state != State.Attacking)
+            // global trigger: spotting the player is handled by the Context
+            if (canSeePlayer && currentState != attackingState && currentState != chasingState)
             {
-                state = State.Chasing;
-            }
-        }  
-    }
-
-    private void Idle() 
-    {
-        agent.ResetPath();
-
-        idleTimeCounter -= Time.deltaTime;
-
-        if(idleTimeCounter < 0)
-        {
-            state = State.Patrolling;
-            idleTimeCounter = idleTime;
-        }
-    }
-
-    private void Patrolling() 
-    {
-        if (Vector3.Distance(currentTarget, transform.position) < positionThreshhold)
-        {
-            float chance = Random.Range(0, 100);
-
-            if (chance < 10)
-            {
-                state = State.Idle;
-                return;
-            }
-
-            currentPointIndex++;
-            currentTarget = patrolPoints[currentPointIndex % patrolPoints.Length].position;
-        }
-        else
-        {
-            agent.SetDestination(currentTarget);
-        }
-    }
-
-    private void Attacking() 
-    {
-        idleTimeCounter = idleTime;
-        agent.ResetPath();
-
-        Shoot();
-
-        if(Vector3.Distance(transform.position, playerTransform.position) > attackDistance || !canSeePlayer)
-        {
-            if(health > minChasingHealth)
-            {
-                state = State.Patrolling; //Cautious
-            }
-            else
-            {
-                state = State.Chasing;
+                ChangeState(chasingState);
             }
         }
     }
 
-    private void Chasing()
+    private void LookAtPlayer()
     {
-        idleTimeCounter = idleTime;
-        agent.SetDestination(lastKnownPlayerPosition);
-
-        if (health < minChasingHealth)
-        {
-            state = State.Patrolling;
-        }
-        else if (Vector3.Distance(transform.position, playerTransform.position) <= attackDistance && canSeePlayer)
-        {
-            state = State.Attacking;
-        }
-        else if (Vector3.Distance(transform.position, playerTransform.position) > maxVisionDistance)
-        {
-            state = State.Patrolling;
-        }
-        else if (Vector3.Distance(transform.position, playerTransform.position) < positionThreshhold && !canSeePlayer)
-        {
-            state = State.Patrolling;
-        }
-    }
-
-    private void LookAtPlayer() 
-    {
-        if (canSeePlayer) 
+        if (canSeePlayer)
         {
             transform.LookAt(new Vector3(playerTransform.position.x, transform.position.y, playerTransform.position.z));
         }
@@ -211,13 +134,13 @@ public class Enemy : MonoBehaviour
 
     private void SetLastKnownPlayerPosition()
     {
-        if(canSeePlayer)
+        if (canSeePlayer)
         {
             lastKnownPlayerPosition = playerTransform.position;
         }
     }
 
-    private void Shoot()
+    public void Shoot()   // public so AttackingState can call it
     {
         if (Time.time > lastShotTime + fireRate)
         {

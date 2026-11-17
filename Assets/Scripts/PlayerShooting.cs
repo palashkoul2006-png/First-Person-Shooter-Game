@@ -1,31 +1,37 @@
 using UnityEngine;
-using UnityEngine.InputSystem;
+
+// RECEIVER of the Command pattern: knows how to do the work,
+// but no longer reads input itself.
 public class PlayerShooting : MonoBehaviour
 {
     public Gun gun;
     public Transform gunHolder;
     private bool isHoldingShoot = false;
 
-    void OnShoot()
+    // Called by StartShootCommand
+    public void StartShooting()
     {
-       isHoldingShoot = true;
+        isHoldingShoot = true;
     }
 
-    void OnShootRelease()
+    // Called by StopShootCommand
+    public void StopShooting()
     {
         isHoldingShoot = false;
     }
 
-    void OnReload()
+    // Called by ReloadCommand
+    public void Reload()
     {
-        if(gun != null)
+        if (gun != null)
         {
             gun.TryReload();
         }
     }
+
     void Update()
     {
-        if(isHoldingShoot && gun != null)
+        if (isHoldingShoot && gun != null)
         {
             gun.Shoot();
         }
@@ -33,7 +39,7 @@ public class PlayerShooting : MonoBehaviour
 
     public void OnDrop()
     {
-        if(gun != null)
+        if (gun != null)
         {
             gun.Drop();
             gun = null;

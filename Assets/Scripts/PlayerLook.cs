@@ -1,7 +1,7 @@
-using System.Security.Cryptography;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
+// OBSERVER of PlayerHealth: shakes the camera when the player is damaged.
 public class PlayerLook : MonoBehaviour
 {
     public static PlayerLook Instance;
@@ -16,10 +16,29 @@ public class PlayerLook : MonoBehaviour
     private float shakeFadeSpeed = 1.5f;
     private Vector3 initialCamPos;
 
-    private void Awake() 
+    private PlayerHealth playerHealth;
+
+    private void Awake()
     {
         Instance = this;
     }
+
+    private void OnEnable()
+    {
+        // Subscribe to the subject's event
+        playerHealth = FindFirstObjectByType<PlayerHealth>();
+
+        if (playerHealth != null)
+            playerHealth.OnDamaged += OnPlayerDamaged;
+    }
+
+    private void OnDisable()
+    {
+        // Unsubscribe
+        if (playerHealth != null)
+            playerHealth.OnDamaged -= OnPlayerDamaged;
+    }
+
     void Start()
     {
         Cursor.lockState = CursorLockMode.Locked;
@@ -38,6 +57,12 @@ public class PlayerLook : MonoBehaviour
         lookInput = value.Get<Vector2>();
     }
 
+    // Observer callback: runs whenever PlayerHealth raises OnDamaged
+    private void OnPlayerDamaged(int health)
+    {
+        AddShake(0.1f, 0.25f);
+    }
+
     void HandleMouseLook()
     {
         float mouseX = lookInput.x * mouseSensitivity * Time.deltaTime;
@@ -51,14 +76,14 @@ public class PlayerLook : MonoBehaviour
         transform.Rotate(Vector3.up * mouseX);
     }
 
-    void HandleShake() 
+    void HandleShake()
     {
         if (shakeDuration > 0)
         {
             cam.localPosition = initialCamPos + Random.insideUnitSphere * shakeMagnitude;
             shakeDuration -= Time.deltaTime * shakeFadeSpeed;
         }
-        else 
+        else
         {
             cam.localPosition = initialCamPos;
         }
